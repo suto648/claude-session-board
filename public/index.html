@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Claude Session Board</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --fg:#e6e9ef; --muted:#9aa4b2; --accent:#6ea8fe; --pin:#f5c451;
+    --ok:#5bd68a; --tok:#7c9cff; --crit:#ff6b6b; --radius:12px;
+    --acc-blue:#6ea8fe; --acc-purple:#a78bfa; --acc-green:#5bd68a; --acc-amber:#f0b429;
+    /* ゲージの溝。カードより必ず「凹んで」見える色（明暗どちらでも） */
+    --track:#090b10;
+  }
+  @media (prefers-color-scheme:light){
+    :root{--bg:#f5f6f8;--panel:#fff;--panel2:#eef1f5;--line:#e2e5ea;
+      --fg:#1a1d23;--muted:#5b6472;--accent:#2f6fed;--pin:#b07908;--tok:#3f63d8;
+      --crit:#d63c3c;--acc-blue:#2f6fed;--acc-purple:#7c3aed;--acc-green:#1a9e57;--acc-amber:#b07908;--track:#ccd2dc;}
+  }
+  /* アカウントのアクセント色（サーバの accent 名で切り替え） */
+  [data-accent=blue]{--acc:var(--acc-blue)}
+  [data-accent=purple]{--acc:var(--acc-purple)}
+  [data-accent=green]{--acc:var(--acc-green)}
+  [data-accent=amber]{--acc:var(--acc-amber)}
+  [data-accent=gray]{--acc:var(--muted)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,"Segoe UI",Meiryo,system-ui,sans-serif}
+  header{position:sticky;top:0;z-index:30;background:var(--panel);
+    border-bottom:1px solid var(--line);padding:11px 20px;
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0 8px 0 0;font-weight:600;letter-spacing:.02em}
+  header .grow{flex:1}
+  input,select,button{font:inherit;color:var(--fg)}
+  input[type=search]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:7px 11px;outline:none;min-width:230px}
+  input[type=search]:focus{border-color:var(--accent)}
+  .toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .toggle button{background:var(--panel2);border:none;padding:7px 12px;cursor:pointer;color:var(--muted)}
+  .toggle button.on{background:var(--accent);color:#fff}
+  .btn{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:7px 12px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .status{font-size:12px;color:var(--muted)}
+  .status .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:var(--muted);margin-right:5px;vertical-align:middle}
+  .status.ok .dot{background:var(--ok)} .status.warn .dot{background:var(--pin)}
+
+  main{padding:6px 20px 90px;max-width:1080px;margin:0 auto}
+  /* ★ ヘッダ＋コックピット帯の実測高さで追従する（ハードコードしない） */
+  .day{position:sticky;top:calc(var(--hdr-h,52px) + var(--ck-h,0px));z-index:10;background:var(--bg);
+    display:flex;align-items:center;gap:12px;padding:16px 2px 8px}
+  .day .lbl{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--fg)}
+  .day .rule{flex:1;height:1px;background:var(--line)}
+  .day .cnt{font-size:11px;color:var(--muted)}
+
+  .row{position:relative;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:11px 14px 12px;margin:8px 0;cursor:pointer;
+    transition:border-color .12s}
+  .row:hover{border-color:var(--accent)}
+  .row.pinned{border-left:3px solid var(--pin)}
+  .row.missing{opacity:.5}
+  .r1{display:flex;align-items:center;gap:9px}
+  .pin{background:none;border:none;cursor:pointer;font-size:17px;line-height:1;
+    color:var(--line);padding:0;flex:none;transition:color .12s}
+  .row:hover .pin{color:var(--muted)}
+  .pin.on,.row:hover .pin.on{color:var(--pin)}
+  .chk{flex:none}
+  .r1 .title{font-weight:600;flex:1;word-break:break-word}
+  .r1 .title[contenteditable]{outline:1px dashed var(--accent);border-radius:4px;padding:0 3px}
+  .model{font-size:11px;color:var(--muted);background:var(--panel2);
+    border:1px solid var(--line);border-radius:20px;padding:2px 9px;white-space:nowrap;flex:none}
+  .metrics{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 0 26px;
+    font-size:12.5px;color:var(--muted)}
+  .metrics .proj{color:var(--fg)}
+  .metrics b{color:var(--fg);font-weight:600}
+  .metrics .tok b{color:var(--tok)}
+  .files{margin:6px 0 0 26px;display:flex;flex-wrap:wrap;gap:5px}
+  .file{font-size:11px;color:var(--muted);background:var(--panel2);
+    border:1px solid var(--line);border-radius:6px;padding:1px 7px;
+    font-family:ui-monospace,Consolas,monospace}
+  .asks{margin:8px 0 0 26px;font-size:12.5px;color:var(--muted)}
+  .asks div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .asks .b{color:var(--line)}
+  /* 「開く」は普段は控えめに、行にhover/フォーカスで前に出す（雑然を減らす）
+     ★ 必ず .row 配下に限定すること。素の .open だと展開中の
+       <div class="cockpit expanded"> のような汎用クラスにも当たる。帯全体が薄くなった。 */
+  .row .open{position:absolute;right:12px;bottom:11px;opacity:.32;transition:opacity .12s}
+  .row:hover .open,.row:focus-within .open,.row .open:focus-visible{opacity:1}
+  @media (hover:none){.row .open{opacity:1}}
+  .tokbar{position:absolute;left:0;bottom:0;height:3px;background:var(--tok);
+    border-bottom-left-radius:var(--radius);opacity:.55}
+  .empty{color:var(--muted);padding:24px 2px}
+
+  #selbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:30;
+    background:var(--panel);border:1px solid var(--line);border-radius:30px;
+    padding:8px 10px 8px 18px;display:none;gap:12px;align-items:center;
+    box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  #selbar.show{display:flex}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;
+    display:none;align-items:center;justify-content:center;padding:24px}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    max-width:760px;width:100%;max-height:82vh;display:flex;flex-direction:column}
+  .modal .mh{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .modal .mh .title{font-weight:600;flex:1}
+  .modal .mb{padding:16px 18px;overflow:auto}
+  .ex{margin-bottom:14px}
+  .ex .role{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
+  .ex.user .role{color:var(--accent)}
+  .ex .text{white-space:pre-wrap;word-break:break-word;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13px;max-height:220px;overflow:auto}
+  .modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .meta{font-size:12px;color:var(--muted)}
+  /* =========================================================
+     常駐コックピット帯 — レート制限ゲージ＋どちらのアカウントで開くか
+     ========================================================= */
+  .cockpit{position:sticky;top:var(--hdr-h,52px);z-index:25;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  .ck-inner{max-width:1080px;margin:0 auto;padding:0 20px}
+  .ck-sum{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%;
+    background:none;border:none;padding:8px 0;cursor:pointer;text-align:left;color:var(--fg)}
+  .ck-sum:hover .ck-chev{color:var(--accent)}
+  .ck-chev{color:var(--muted);font-size:10px;flex:none;transition:transform .15s;display:inline-block}
+  .cockpit.expanded .ck-chev{transform:rotate(180deg)}
+  .ck-grow{flex:1}
+  .ck-sep{width:1px;height:15px;background:var(--line);flex:none}
+  .ck-age{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ck-mini{display:flex;align-items:center;gap:6px;min-width:0}
+  /* カードと同じ原則: 減光は「未ログイン」だけ。待機中は普通の明るさ。 */
+  .ck-mini.dim{opacity:.55}
+  .ck-mini .nm{font-size:12px;color:var(--muted);white-space:nowrap;
+    max-width:130px;overflow:hidden;text-overflow:ellipsis}
+  .ck-mini.on .nm{color:var(--fg);font-weight:600}
+  .ck-mini .pc{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+    min-width:30px}
+  .ck-mini .na{font-size:11.5px;color:var(--muted)}
+  .dotmark{width:7px;height:7px;border-radius:50%;flex:none;background:var(--acc,var(--muted))}
+  .minibar{width:34px;height:5px;border-radius:3px;background:var(--track);
+    overflow:hidden;flex:none}
+  .minibar i{display:block;height:100%}
+
+  .ck-body{display:none;padding:0 0 14px}
+  .cockpit.expanded .ck-body{display:block}
+  .accts{display:flex;gap:14px;flex-wrap:wrap;margin-top:2px}
+  .acct{flex:1 1 320px;min-width:270px;background:var(--panel2);
+    border:1px solid var(--line);border-left:3px solid transparent;
+    border-radius:10px;padding:10px 14px 13px}
+  .acct.on{border-left-color:var(--acc)}
+  /* ★ グレーアウトは「ログインできていない」の意味だけに使う。
+     値が古いことは文章で言う（色を落とすと全体が死んで見えて読めなくなる）。
+     待機中でもログイン済みなら普通の明るさのまま＝両方の残量を見比べられる。 */
+  .acct.dim{opacity:.55}
+  .acct.dim .ac-mail{color:var(--muted);font-weight:500}
+  .acct.standby .ac-mail{color:var(--muted)}
+  .ac-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ac-mail{font-size:13px;font-weight:600;word-break:break-all}
+  .ac-badge{font-size:10.5px;letter-spacing:.03em;border-radius:20px;padding:1px 8px;
+    border:1px solid var(--acc);color:var(--acc);white-space:nowrap}
+  .ac-badge.idle{border-color:var(--line);color:var(--muted)}
+  .ac-label{font-size:11px;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);border-radius:5px;padding:1px 7px;white-space:nowrap}
+  .ac-plan{font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--acc);
+    border:1px solid var(--acc);border-radius:5px;padding:0 6px;white-space:nowrap;opacity:.9}
+  .ac-fresh{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+  .ac-note{font-size:12px;color:var(--muted);line-height:1.75;margin-top:8px}
+  .ac-note code{font-family:ui-monospace,Consolas,monospace;background:var(--panel);
+    border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11.5px}
+
+  .g{margin-top:10px}
+  .g .glab{display:flex;align-items:baseline;gap:7px;margin-bottom:4px}
+  .g .glab .k{color:var(--fg);font-weight:600;font-size:12px}
+  .g .glab .sub{font-size:11px;color:var(--muted);margin-left:auto}
+  .g .glab .pct{font-size:13px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums}
+  .g .glab .pct.dim{color:var(--muted);font-weight:600}
+  .g .bar{height:10px;border-radius:6px;background:var(--track);overflow:hidden}
+  .g .bar i{display:block;height:100%;transition:width .3s}
+  .g .rst{font-size:11px;color:var(--muted);margin-top:4px}
+
+  /* 朝8時アンカーの状態（27日間サイレント故障の再発防止） */
+  .anchor{display:flex;align-items:center;gap:8px;margin-top:12px;padding:8px 12px;
+    border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+    font-size:12px;flex-wrap:wrap}
+  .anchor .ico{flex:none;font-size:13px}
+  .anchor .msg{color:var(--fg)}
+  .anchor .sub{color:var(--muted);font-size:11.5px}
+  .anchor .fix{color:var(--muted);font-size:11.5px;font-family:ui-monospace,Consolas,monospace;
+    background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+  .anchor .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .btn.sm{padding:4px 10px;font-size:11.5px;border-radius:7px}
+  .btn.sm:disabled{opacity:.5;cursor:default}
+  /* 帯の中はカードと同じ panel2 なので、ボタンは一段持ち上げて輪郭を出す */
+  .anchor .btn{background:var(--panel)}
+  .anchor .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .anchor.bad{border-color:var(--crit)}
+  .anchor.bad .ico,.anchor.bad .msg{color:var(--crit)}
+  .anchor.warn{border-color:var(--pin)}
+  .anchor.warn .ico,.anchor.warn .msg{color:var(--pin)}
+  .anchor.good .ico{color:var(--ok)}
+  /* 折りたたみ行の中のアンカー表示 */
+  .ck-anchor{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .ck-anchor.bad{color:var(--crit)} .ck-anchor.warn{color:var(--pin)} .ck-anchor.good{color:var(--ok)}
+
+  .ck-foot{display:flex;align-items:center;gap:12px;margin-top:13px;
+    font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+  .lnk{background:none;border:none;color:var(--muted);cursor:pointer;
+    font:inherit;text-decoration:underline dotted;padding:0}
+  .lnk:hover{color:var(--accent)}
+  .ck-detail{display:none;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);line-height:1.85}
+  .ck-detail.show{display:block}
+
+  /* board.json が無かった/壊れていたときの通知（黙って空欄にしない） */
+  .boardhealth{display:flex;align-items:center;gap:8px;margin:0 0 12px;padding:8px 12px;
+    border:1px solid var(--pin);border-radius:9px;background:var(--panel2);
+    font-size:12px;color:var(--pin);flex-wrap:wrap}
+  .boardhealth code{font-family:ui-monospace,Consolas,monospace;background:var(--panel);
+    border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11.5px;color:var(--fg)}
+  /* 0件のときの案内（帯を消さず、案内を出す） */
+  .ck-empty{padding:10px 2px;color:var(--muted);font-size:12.5px;line-height:1.7}
+  .ck-empty b{color:var(--fg)}
+  /* スロットの中身が入れ替わった印 */
+  .ac-swap{font-size:10.5px;font-weight:700;color:#fff;background:var(--pin);
+    border-radius:20px;padding:1px 8px;white-space:nowrap}
+  /* アカウント管理モーダル */
+  .acctmgr{display:flex;flex-direction:column;gap:8px}
+  .amrow{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;flex-wrap:wrap}
+  .amrow .amkey{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);
+    background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .amrow .amemail{font-weight:600;flex:1;min-width:140px;word-break:break-all}
+  .amrow .amactions{display:flex;gap:5px}
+  .amsec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px}
+  .amsec:first-child{margin-top:0}
+  .amform{display:flex;flex-direction:column;gap:8px}
+  .amform .amgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media (max-width:520px){.amform .amgrid{grid-template-columns:1fr}}
+
+  .field{width:100%;padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--fg);outline:none;font-family:ui-monospace,Consolas,monospace}
+  .field:focus{border-color:var(--accent)}
+  .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .quick .q{font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:3px 9px;cursor:pointer;font-family:ui-monospace,Consolas,monospace}
+  .quick .q:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>◧ Session Board</h1>
+  <input type="search" id="q" placeholder="タイトル・目次・ファイル・プロジェクトで検索">
+  <div class="toggle" id="pinfilter">
+    <button data-v="all" class="on">すべて</button>
+    <button data-v="pin">★ ピンのみ</button>
+  </div>
+  <div class="toggle" id="order">
+    <button data-v="new" class="on">新しい順</button>
+    <button data-v="old">古い順</button>
+  </div>
+  <span class="grow"></span>
+  <button class="btn primary" id="newBtn">＋ 新規セッション</button>
+  <button class="btn" id="openPins">★ ピンを全部開く</button>
+  <span class="status" id="wtstatus"></span>
+</header>
+
+<!-- 常駐コックピット帯（既定は折りたたみ・クリックで展開） -->
+<div class="cockpit" id="cockpit" style="display:none">
+  <div class="ck-inner">
+    <button class="ck-sum" id="ckSum" aria-expanded="false" aria-controls="ckBody"
+            title="クリックで展開／折りたたみ"></button>
+    <div class="ck-body" id="ckBody"></div>
+  </div>
+</div>
+
+<main id="main"></main>
+
+<div id="selbar">
+  <span id="selcount"></span>
+  <button class="btn" id="selclear">選択解除</button>
+  <button class="btn primary" id="selopen">選択したセッションを開く</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mh"><span class="title" id="mTitle"></span>
+      <button class="btn" id="mClose">閉じる</button></div>
+    <div class="mb" id="mBody"></div>
+    <div class="mf">
+      <span class="meta" id="mMeta"></span>
+      <span><button class="btn" id="mDry">コマンド確認</button>
+        <button class="btn primary" id="mOpen">このセッションを開く</button></span>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="newdlg">
+  <div class="modal" style="max-width:520px">
+    <div class="mh"><span class="title">＋ 新規セッションを開く</span><button class="btn" id="ndClose">閉じる</button></div>
+    <div class="mb">
+      <div class="meta" style="margin-bottom:6px">起動するフォルダ（このディレクトリで新しい claude が始まります）</div>
+      <input id="ndPath" class="field" list="ndDirs" placeholder="C:\Users\name\project" spellcheck="false">
+      <datalist id="ndDirs"></datalist>
+      <div class="quick" id="ndQuick"></div>
+    </div>
+    <div class="mf"><span class="meta">wt の新しいタブで開きます</span>
+      <button class="btn primary" id="ndOpen">このフォルダで開始</button></div>
+  </div>
+</div>
+
+<!-- アカウント管理（board.json settings.accounts の追加・削除・並べ替え） -->
+<div class="overlay" id="acctdlg">
+  <div class="modal" style="max-width:640px">
+    <div class="mh"><span class="title">アカウント管理</span><button class="btn" id="amClose">閉じる</button></div>
+    <div class="mb">
+      <div class="amsec">登録済み（この盤面が見に行くスロット・並べ替え可）</div>
+      <div class="acctmgr" id="amRegistered"></div>
+      <div class="amsec" id="amUnregSec" style="display:none">名簿（claude-anchor）にはあるが未登録</div>
+      <div class="acctmgr" id="amUnregistered"></div>
+      <div class="amsec">手動で追加</div>
+      <div class="amform">
+        <div class="meta">通常は上の「追加」ボタンで足ります。ここは任意のファイルを直接指すときだけ使います。</div>
+        <div class="amgrid">
+          <input class="field" id="amKey" placeholder="key（英数・-・_、例: c）" spellcheck="false">
+          <input class="field" id="amLabel" placeholder="label（任意・例: 仕事用）" spellcheck="false">
+        </div>
+        <input class="field" id="amConfig" placeholder="configFile（例: ~/.claude-c/.claude.json）" spellcheck="false">
+        <input class="field" id="amCred" placeholder="credFile（例: ~/.claude-c/.credentials.json）" spellcheck="false">
+        <div><button class="btn primary" id="amAdd">この内容で追加</button></div>
+      </div>
+    </div>
+    <div class="mf"><span class="meta" id="amMsg"></span><span></span></div>
+  </div>
+</div>
+
+<script>
+let SESSIONS=[], SETTINGS={maxBulkOpen:10,bulkConfirmThreshold:5}, SELECTED=new Set(), CURRENT=null;
+let PINFILTER='all', ORDER='new', MAXTOK=1;
+let KNOWNDIRS=[], HOMEDIR='', USAGE=null;
+const $=s=>document.querySelector(s);
+async function api(p,o){const r=await fetch(p,o);return r.json();}
+
+function tokFmt(n){if(!n)return'0';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return Math.round(n/1e3)+'k';return''+n;}
+function durFmt(a,b){if(!a||!b)return'';let ms=new Date(b)-new Date(a);if(ms<0)ms=0;
+  const m=Math.round(ms/60000);if(m<1)return'<1分';if(m<60)return m+'分';
+  const h=Math.floor(m/60),mm=m%60;if(h<24)return h+'時間'+(mm?mm+'分':'');
+  const d=Math.floor(h/24),hh=h%24;return d+'日'+(hh?hh+'時間':'');}
+function modelFmt(model,effort){let m='';if(model){if(/opus/.test(model))m='opus';else if(/sonnet/.test(model))m='sonnet';
+  else if(/haiku/.test(model))m='haiku';else if(/fable/.test(model))m='fable';else m=model;}
+  return [m,effort].filter(Boolean).join('·');}
+function dayKey(iso){if(!iso)return'不明';const d=new Date(iso);
+  return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate();}
+function dayLabel(iso){if(!iso)return'見つからないピン';const d=new Date(iso);
+  const w='日月火水木金土'[d.getDay()];const now=new Date();
+  const same=(x,y)=>x.getFullYear()==y.getFullYear()&&x.getMonth()==y.getMonth()&&x.getDate()==y.getDate();
+  const yd=new Date(now);yd.setDate(now.getDate()-1);
+  let tag=same(d,now)?' (今日)':same(d,yd)?' (昨日)':'';
+  return (d.getMonth()+1)+'/'+d.getDate()+'('+w+')'+tag;}
+
+async function load(){
+  const d=await api('/api/sessions');
+  SESSIONS=d.sessions||[];SETTINGS=d.settings||SETTINGS;
+  KNOWNDIRS=d.knownDirs||[];HOMEDIR=d.home||'';
+  MAXTOK=Math.max(1,...SESSIONS.map(s=>s.outputTokens||0));
+  const w=$('#wtstatus');
+  if(d.wtResolvable===false){w.className='status warn';w.innerHTML='<span class="dot"></span>wt未検出・素のウィンドウで開きます';}
+  else{w.className='status ok';w.innerHTML='<span class="dot"></span>'+SESSIONS.length+' セッション';}
+  render();loadStatus();
+}
+
+// =============================================================
+//  コックピット帯（レート制限ゲージ × アカウント）
+// -------------------------------------------------------------
+//  サーバの /api/status は accounts 配列を返す。1アカウント =
+//   { email, accent, active, source, auth, fetchedAtMs, ageMs, freshness, limits[] }
+//  ★ severity（緑/黄/赤）はサーバ側が単一ソース。ここでしきい値を作らない。
+//  ★ 古い値に「新鮮」と言わせない。freshness/source で文言を変える。
+// =============================================================
+function pctFmt(n){return (n==null?'?':n)+'%';}
+function ageFmt(ms){if(ms==null)return'';const m=Math.round(ms/60000);if(m<1)return'たった今';if(m<60)return m+'分前';const h=Math.floor(m/60);if(h<24)return h+'時間前';return Math.floor(h/24)+'日前';}
+function resetFmt(ms){if(ms==null)return'';const m=Math.round(ms/60000);if(m<=0)return'まもなく';if(m<60)return'あと'+m+'分';const h=Math.floor(m/60),mm=m%60;if(h<24)return'あと'+h+'時間'+(mm?mm+'分':'');return'あと'+Math.floor(h/24)+'日';}
+function sevColor(sev,dim){if(dim)return'var(--muted)';if(sev==='critical')return'var(--crit)';if(sev==='warning'||sev==='warn')return'var(--pin)';return'var(--ok)';}
+function localPart(m){return m?String(m).split('@')[0]:'不明';}
+function hhmm(d){return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}
+function stampFmt(ms){const d=new Date(ms);return (d.getMonth()+1)+'/'+d.getDate()+' '+hhmm(d);}
+
+// リセット時刻は必ず残す（カウントダウン＋実時刻）
+function resetText(l){
+  if(l.resetsAt==null||l.resetInMs==null)return'';
+  const at=Date.parse(l.resetsAt);
+  const when=l.resetInMs>=24*3600e3?stampFmt(at):hhmm(new Date(at));
+  return 'リセット '+resetFmt(l.resetInMs)+'（'+when+'）';
+}
+// expired の意味は文脈で変わる。取れたてなら「リセット済」、古い値なら「未確認」。
+function limitMode(a,l){
+  if(!l.expired)return'ok';
+  return (a.source==='live'&&a.freshness==='fresh')?'reset':'unknown';
+}
+function barPct(l,mode){return mode==='reset'?0:Math.max(0,Math.min(100,l.percent||0));}
+
+// 鮮度の文言。live/cacheでも古ければ「◯時点（以降未取得）」と言い切る。
+function freshText(a){
+  if(a.source==='unauth')return'未ログイン';
+  if(a.source==='missing')return'設定が読めません';
+  if(a.source==='empty')return'取得実績なし';
+  if(a.freshness==='stale'&&a.fetchedAtMs)return'◷ '+stampFmt(a.fetchedAtMs)+' 時点（以降未取得）';
+  return '◷ '+ageFmt(a.ageMs)+'・'+(a.source==='live'?'自前取得':'Claude Code のキャッシュ');
+}
+function shortFresh(a){
+  if(a.source==='unauth'||a.source==='missing'||a.source==='empty')return'';
+  if(a.freshness==='stale'&&a.fetchedAtMs)return'◷ '+stampFmt(a.fetchedAtMs)+' 時点';
+  return '◷ '+ageFmt(a.ageMs);
+}
+function unavailText(a){
+  if(a.source==='unauth')return a.rosterKey
+    ? ['このアカウントはまだログインしていません。',
+       'claude-anchor で ',{code:'setup-account.ps1 '+a.rosterKey},' を1回実行すると残量が出ます。']
+    : ['このプロファイルにはログイン情報がありません。','ログインすると残量が出ます。'];
+  if(a.source==='empty')return['ログイン済みですが使用量をまだ一度も取得していません。',
+    '「更新」を押すか、このアカウントで claude を使うと出ます。'];
+  if(a.source==='missing')return['設定ファイルが読めません（'+(a.reason||'不明')+'）。',
+    a.configFile?{code:a.configFile}:''];
+  return['表示できるデータがありません。'];
+}
+
+// ---- 朝8時アンカー（平日8:00に5時間枠の起点を揃える）の状態 ----
+// 2026-07-09〜08-14 の27日間、空打ちし続けたのに誰も気づかなかった。
+// 毎日見るこの帯に出すのが再発防止の本体。
+// ★ 異常がある時だけ出す（k.show）。正常なら帯には何も出さない。
+function anchorView(k){
+  if(!k||!k.show)return null;
+  const days=k.lastOkDays, st=k.state;
+  if(st==='setup'){
+    const n=(k.accounts||[]).filter(a=>!a.loggedIn);
+    return {tone:'bad',ico:'⚓',
+      msg:'アンカーが動いていません'+(days!=null?'（'+days+'日間）':''),
+      sub:n.map(a=>localPart(a.email||a.key)).join('・')+' のログインが必要です（1回だけ）'};
+  }
+  // 枠の名前と中身のずれでは警告しない（/login で乗り換えるのは普通の操作）。
+  // 困るのは「そのアカウントがどの枠にも入っていないので打てない」場合だけ。
+  if(st==='missing') return {tone:'bad',ico:'⚓',
+    msg:'朝8時に打てていないアカウントがあります',
+    sub:(k.missing||[]).map(localPart).join('・')+' がどの枠にも入っていません（どれか1つの枠でそのアカウントにログインすると直ります）'};
+  if(st==='fail')  return {tone:'bad',ico:'⚓',
+    msg:'アンカーが失敗しています'+(days!=null?'（成功は'+days+'日前）':''),sub:failDetail(k)};
+  if(st==='stale') return {tone:'warn',ico:'⚓',
+    msg:'アンカーが実行されていません'+(k.ranAtMs?'（最後の実行 '+stampFmt(k.ranAtMs)+'）':''),
+    sub:'ログインは出来ています。タスク ClaudeAnchor0800 が止まっていないか確認してください'};
+  return {tone:'warn',ico:'⚓',msg:'アンカーの状態が不明です',sub:null};
+}
+function isToday(ms){const d=new Date(ms),n=new Date();
+  return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+// 枠の中身は表示するが、それ自体は異常ではない（参考情報）。
+function frameNote(k){
+  const w=(k.accounts||[]).filter(a=>a.mismatch);
+  if(!w.length)return null;
+  return w.map(a=>a.key+' の枠には '+localPart(a.profileEmail||a.actual)+' が入っています').join(' / ');
+}
+function failDetail(k){
+  const w=(k.accounts||[]).filter(a=>a.loggedIn&&a.state==='FAIL');
+  if(!w.length)return null;
+  return w.map(a=>localPart(a.email)+': '+(a.msg||a.state)).join(' / ');
+}
+// 折りたたみ行に出す短い版。異常時だけ（正常なら anchorView が null）。
+// 「動いていない」と「動いたが失敗」と「そのアカウントが打てていない」は別物なので言い分ける。
+function anchorMini(k){
+  const v=anchorView(k); if(!v)return null;
+  const days=k.lastOkDays;
+  let text;
+  switch(k.state){
+    case 'setup': text=(days!=null?'⚓ '+days+'日 未実行':'⚓ 未ログイン'); break;
+    case 'missing': text='⚓ 打てていない'; break;
+    case 'fail':  text='⚓ 失敗'; break;
+    case 'stale': text='⚓ 停止中'; break;
+    default:      text='⚓ 要確認';
+  }
+  return {tone:v.tone,text,title:v.msg+(v.sub?(' — '+v.sub):'')};
+}
+
+// ---- アンカーの操作（ボタン → 端末が1枚開く）----
+async function anchorSetup(key,btn){
+  const old=btn.textContent;btn.disabled=true;btn.textContent='端末を開いています…';
+  try{
+    const r=await api('/api/anchor/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key})});
+    if(r.error){alert('開けませんでした: '+r.error);btn.disabled=false;btn.textContent=old;return;}
+    if(r.via==='powershell-fallback')toast('wt未検出のため素のウィンドウで開きました');
+    btn.textContent='端末で続けてください';
+    anchorWatch();
+  }catch(e){btn.disabled=false;btn.textContent=old;}
+}
+// 押したあとしばらく状態を見に行く（端末側が終わったのを拾って表示を切り替える）
+let ANCHORWATCH=null;
+function anchorWatch(){
+  if(ANCHORWATCH)clearInterval(ANCHORWATCH);
+  let n=0;
+  ANCHORWATCH=setInterval(async()=>{
+    n++; await loadStatus();
+    if(n>=24){clearInterval(ANCHORWATCH);ANCHORWATCH=null;}
+  },5000);
+}
+
+let CKOPEN=false,CKDETAIL=false;
+try{CKOPEN=localStorage.getItem('ck.open')==='1';CKDETAIL=localStorage.getItem('ck.detail')==='1';}catch(e){}
+
+function renderCockpit(){
+  const d=USAGE,ck=$('#cockpit');
+  if(!d){ck.style.display='none';syncSticky();return;}
+  // ★ 0件でも帯自体は隠さない（案内を出す）。設定ファイルの異常も同様。
+  //   以前は d.accounts が空/無いと帯ごと非表示にしていたため、案内が一切無かった。
+  const zero=!d.accounts||d.accounts.length===0;
+  const unhealthy=!!(d.boardHealth&&d.boardHealth.status!=='ok');
+  ck.style.display='';
+  ck.classList.toggle('expanded',CKOPEN||zero||unhealthy);
+  ckSummary(d);ckBody(d);syncSticky();
+}
+
+// ---- 折りたたみ時の1行サマリ ----
+function ckSummary(d){
+  const el=$('#ckSum');el.textContent='';el.setAttribute('aria-expanded',CKOPEN?'true':'false');
+  if(!d.accounts||d.accounts.length===0){
+    const m=document.createElement('span');m.className='ck-mini dim';
+    const dot=document.createElement('span');dot.className='dotmark';
+    const nm=document.createElement('span');nm.className='nm';nm.textContent='アカウント未登録（クリックして追加）';
+    m.append(dot,nm);el.appendChild(m);
+  }
+  (d.accounts||[]).forEach((a,i)=>{
+    if(i>0){const s=document.createElement('span');s.className='ck-sep';el.appendChild(s);}
+    const m=document.createElement('span');
+    m.className='ck-mini '+(a.active?'on':(a.available?'standby':'dim'));
+    m.dataset.accent=a.accent||'blue';
+    const dot=document.createElement('span');dot.className='dotmark';
+    const nm=document.createElement('span');nm.className='nm';nm.textContent=localPart(a.email);
+    nm.title=(a.email||'アカウント不明')+(a.plan?'（'+a.plan+'）':'')+(a.active?'（resume・新規はこのアカウントで開きます）':'（待機中）');
+    m.append(dot,nm);
+    if(a.available&&a.limits.length){
+      for(const l of a.limits.slice(0,2)){
+        const mode=limitMode(a,l);
+        const b=document.createElement('span');b.className='minibar';
+        b.title=l.label+' 使用率 '+pctFmt(l.percent);
+        const f=document.createElement('i');f.style.width=barPct(l,mode)+'%';
+        f.style.background=sevColor(l.severity,false);b.appendChild(f);
+        const pc=document.createElement('span');pc.className='pc';
+        pc.textContent=mode==='reset'?'0%':pctFmt(l.percent);
+        m.append(b,pc);
+      }
+    }else{
+      const na=document.createElement('span');na.className='na';na.textContent=freshText(a);m.appendChild(na);
+    }
+    el.appendChild(m);
+  });
+  const grow=document.createElement('span');grow.className='ck-grow';el.appendChild(grow);
+  // アンカーが不調なら折りたたんでいても見えるようにする
+  const am=anchorMini(d.anchor);
+  if(am&&am.tone!=='good'){
+    const s=document.createElement('span');s.className='ck-anchor '+am.tone;
+    s.textContent=am.text;s.title=am.title;el.appendChild(s);
+    const sep=document.createElement('span');sep.className='ck-sep';el.appendChild(sep);
+  }
+  const act=d.accounts.find(a=>a.active);
+  if(act){const g=document.createElement('span');g.className='ck-age';g.textContent=shortFresh(act);el.appendChild(g);}
+  const chev=document.createElement('span');chev.className='ck-chev';chev.textContent='▼';el.appendChild(chev);
+}
+
+// ---- 展開時の本体 ----
+function ckBody(d){
+  const body=$('#ckBody');body.textContent='';
+
+  // board.json が無かった/壊れていた通知（黙って空欄にしない）
+  const bh=d.boardHealth;
+  if(bh&&bh.status!=='ok'){
+    const box=document.createElement('div');box.className='boardhealth';
+    const msg=document.createElement('span');
+    msg.textContent=bh.status==='created'
+      ? '盤面の設定ファイル(board.json)がまだ無かったので、既定値で新規作成しました。'
+      : '盤面の設定ファイル(board.json)が壊れていたため、既定値で作り直しました（元のファイルは退避済みです）。';
+    box.appendChild(msg);
+    if(bh.detail){const c=document.createElement('code');c.textContent=bh.detail;box.appendChild(c);}
+    body.appendChild(box);
+  }
+
+  const wrap=document.createElement('div');wrap.className='accts';
+  if(!d.accounts||d.accounts.length===0){
+    const e=document.createElement('div');e.className='ck-empty';
+    e.innerHTML='<b>まだアカウントが登録されていません。</b><br>下の「アカウント管理」から追加すると、ここに使用量が表示されます。';
+    wrap.appendChild(e);
+  } else {
+    for(const a of d.accounts)wrap.appendChild(acctBlock(a));
+  }
+  body.appendChild(wrap);
+
+  // 朝8時アンカー
+  const av=anchorView(d.anchor);
+  if(av){
+    const box=document.createElement('div');box.className='anchor '+av.tone;
+    const ico=document.createElement('span');ico.className='ico';ico.textContent=av.ico;
+    const msg=document.createElement('span');msg.className='msg';msg.textContent=av.msg;
+    box.append(ico,msg);
+    if(av.sub){const s=document.createElement('span');s.className='sub';s.textContent=av.sub;box.appendChild(s);}
+    const g=document.createElement('span');g.className='ck-grow';box.appendChild(g);
+
+    // 直し方をボタンにする。ログインは対話が要るので端末を1枚開く。
+    // ★ ボタンは「今まだログインできていない／取り違えている」ものだけ。
+    //   ログイン済みならプロファイル実体から判るので、実行記録を待たずに消える。
+    const acts=document.createElement('span');acts.className='acts';
+    for(const a of (d.anchor.accounts||[])){
+      if(!a.key)continue;
+      if(a.loggedIn&&!a.mismatch)continue;
+      const b=document.createElement('button');b.className='btn sm primary';
+      b.textContent=localPart(a.email||a.key)+' をログイン';
+      b.title='端末が開きます。/login と入力 → ブラウザで承認 → /exit。\n'
+             +'承認は既定ブラウザに開くので、先に '+(a.email||'')+' でサインインしておいてください。\n'
+             +'（違うアカウントで承認したらスクリプトが検出して破棄を提案します）';
+      b.onclick=()=>anchorSetup(a.key,b);
+      acts.appendChild(b);
+    }
+    if(acts.children.length)box.appendChild(acts);
+    body.appendChild(box);
+  }
+
+  const foot=document.createElement('div');foot.className='ck-foot';
+  const info=document.createElement('span');
+  info.textContent='ステータス照会のみ（メッセージ枠は消費しません）';
+  const grow=document.createElement('span');grow.className='ck-grow';
+  const det=document.createElement('button');det.className='lnk';det.textContent='自動更新のしくみ';
+  const mgr=document.createElement('button');mgr.className='btn';mgr.textContent='アカウント管理';
+  mgr.onclick=openAccountsModal;
+  const btn=document.createElement('button');btn.className='btn';btn.id='ckRefresh';btn.textContent='更新';
+  btn.onclick=refreshStatus;
+  foot.append(info,grow,det,mgr,btn);body.appendChild(foot);
+
+  const detail=document.createElement('div');detail.className='ck-detail'+(CKDETAIL?' show':'');
+  const a=d.auto||{};
+  const lines=[
+    '自動更新: 前回取得以降 '+(a.minTurns||3)+'回以上やり取り＋'+((a.idleNeededMin||60)/60)+'時間放置で1回だけ',
+    '今の状況: やり取り '+(a.turnsSinceFetch!=null?a.turnsSinceFetch:'?')+'回 / 放置 '+(a.idleMinutes!=null?a.idleMinutes+'分':'—'),
+    '自前取得は有効なトークンがあるアカウントだけ。非アクティブ側のトークンは約8時間で失効するので、',
+    'ふだんは「Claude Code のキャッシュ」か「最後に取れた時点の値」を表示します。',
+    'タイムラインは既定プロファイル（~/.claude/projects）のセッションのみです。',
+  ];
+  for(const t of lines){detail.appendChild(document.createTextNode(t));detail.appendChild(document.createElement('br'));}
+  for(const acc of d.accounts){
+    if(!acc.error)continue;
+    const e=document.createElement('div');e.style.color='var(--pin)';
+    e.textContent='⚠ '+localPart(acc.email)+' の自前取得に失敗: '+acc.error+'（表示は前の値）';
+    detail.appendChild(e);
+  }
+  body.appendChild(detail);
+  det.onclick=()=>{CKDETAIL=!CKDETAIL;detail.classList.toggle('show',CKDETAIL);
+    try{localStorage.setItem('ck.detail',CKDETAIL?'1':'0');}catch(e){}syncSticky();};
+}
+
+function acctBlock(a){
+  const w=document.createElement('div');
+  // on=アクティブ(アクセント左帯) / standby=待機だがログイン済み / dim=未ログイン
+  const cls=a.active?'on':(a.available?'standby':'dim');
+  w.className='acct '+cls;w.dataset.accent=a.accent||'blue';
+  const h=document.createElement('div');h.className='ac-head';
+  const dot=document.createElement('span');dot.className='dotmark';
+  const mail=document.createElement('span');mail.className='ac-mail';mail.textContent=a.email||'アカウント不明';
+  h.append(dot,mail);
+  // Max と Pro は同じ「50%」でも実量が違う。どちらの枠を見ているか必ず分かるようにする。
+  if(a.plan){const pl=document.createElement('span');pl.className='ac-plan';pl.textContent=a.plan;
+    pl.title=a.plan+' プランの枠です（Pro とは同じ%でも実量が違います）'
+      +(a.primary?String.fromCharCode(10)+'名簿上の主アカウント（切替は使える限りここを選びます）':'');h.appendChild(pl);}
+  // 任意の用途名（board.json の accounts[].label）。主はあくまで実email。
+  if(a.label){const lb=document.createElement('span');lb.className='ac-label';lb.textContent=a.label;h.appendChild(lb);}
+  const bdg=document.createElement('span');bdg.className='ac-badge'+(a.active?'':' idle');
+  bdg.textContent=a.active?'▶ 開く先':'待機';
+  bdg.title=a.active?'resume・新規セッションはこのアカウントで開きます'
+                    :'切り替えは手動（再ログイン／別プロファイル起動）。この盤面は状態を映すだけです。';
+  const fr=document.createElement('span');fr.className='ac-fresh';fr.textContent=freshText(a);
+  h.append(bdg,fr);
+  // ★ このスロットの中身が前回と違うアカウントに入れ替わっていた場合の印(判断B)。
+  if(a.swapped){
+    const sw=document.createElement('span');sw.className='ac-swap';sw.textContent='⇄ 入れ替わりました';
+    const from=a.swappedFrom?('以前: '+a.swappedFrom+' → 今: '+(a.email||'不明')):'このスロットの中身が変わりました';
+    const when=a.swappedAtMs?('\n検知: '+new Date(a.swappedAtMs).toLocaleString()):'';
+    sw.title=from+when;
+    h.appendChild(sw);
+  }
+  w.appendChild(h);
+
+  if(!a.available){
+    const n=document.createElement('div');n.className='ac-note';
+    for(const part of unavailText(a)){
+      if(!part)continue;
+      if(typeof part==='string'){n.appendChild(document.createTextNode(part));n.appendChild(document.createElement('br'));}
+      else{const c=document.createElement('code');c.textContent=part.code;n.appendChild(c);}
+    }
+    w.appendChild(n);return w;
+  }
+  for(const l of a.limits)w.appendChild(gauge(a,l));
+  // 出所の注記は「誤解を生む時だけ」。ライブで取れているなら何も言わない。
+  if(!a.configured&&a.source!=='live'){
+    const n=document.createElement('div');n.className='ac-note';
+    n.textContent='※ 今の設定ファイルには無いアカウント（最後に取れた値を表示）';
+    w.appendChild(n);
+  }
+  return w;
+}
+
+function gauge(a,l){
+  const mode=limitMode(a,l);
+  const g=document.createElement('div');g.className='g';
+  const lab=document.createElement('div');lab.className='glab';
+  const k=document.createElement('span');k.className='k';k.textContent=l.label;
+  const sub=document.createElement('span');sub.className='sub';sub.textContent='使用率';
+  // ★ 古い値でも数字と色は落とさない（読めなくなるため）。古さは下の説明文で言う。
+  const pct=document.createElement('span');pct.className='pct';
+  pct.textContent=mode==='reset'?'0%':pctFmt(l.percent);
+  lab.append(k,sub,pct);
+  const bar=document.createElement('div');bar.className='bar';
+  const f=document.createElement('i');f.style.width=barPct(l,mode)+'%';
+  f.style.background=sevColor(l.severity,false);bar.appendChild(f);
+  const rst=document.createElement('div');rst.className='rst';
+  if(mode==='reset')rst.textContent='リセット済み';
+  else if(mode==='unknown')rst.textContent=(a.fetchedAtMs?stampFmt(a.fetchedAtMs)+' 時点で ':'')+pctFmt(l.percent)+'・以降未取得（リセット済みの可能性）';
+  else rst.textContent=resetText(l)||'リセット時刻は未定';
+  g.append(lab,bar,rst);return g;
+}
+
+// ヘッダ＋帯の実測高さを CSS 変数へ（日付見出しの sticky が隠れないように）
+function syncSticky(){
+  const h=document.querySelector('header'),ck=$('#cockpit');
+  const hh=h?h.getBoundingClientRect().height:52;
+  const ch=(ck&&ck.style.display!=='none')?ck.getBoundingClientRect().height:0;
+  const s=document.documentElement.style;
+  s.setProperty('--hdr-h',Math.round(hh)+'px');
+  s.setProperty('--ck-h',Math.round(ch)+'px');
+}
+
+async function loadStatus(){try{USAGE=await api('/api/status');}catch(e){return;}renderCockpit();}
+async function refreshStatus(){
+  const btn=$('#ckRefresh');
+  if(btn){btn.textContent='取得中…';btn.disabled=true;}
+  try{USAGE=await api('/api/status/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
+  catch(e){}
+  renderCockpit();
+}
+
+// ---- 新規セッション ----
+function openNewDialog(){
+  const dl=$('#ndDirs');dl.textContent='';
+  for(const p of KNOWNDIRS){const o=document.createElement('option');o.value=p;dl.appendChild(o);}
+  const q=$('#ndQuick');q.textContent='';
+  const quick=[HOMEDIR,...KNOWNDIRS.filter(p=>p!==HOMEDIR)].filter(Boolean).slice(0,8);
+  for(const p of quick){const b=document.createElement('span');b.className='q';b.textContent=(p.split('\\').pop()||p);b.title=p;b.onclick=()=>{$('#ndPath').value=p;};q.appendChild(b);}
+  $('#ndPath').value=HOMEDIR||'';
+  $('#newdlg').classList.add('show');setTimeout(()=>$('#ndPath').focus(),30);
+}
+async function doNew(){
+  const cwd=$('#ndPath').value.trim();
+  const r=await api('/api/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cwd})});
+  if(r.error){alert(r.error);return;}
+  if(r.via==='powershell-fallback')toast('wt未検出のため素のウィンドウで開きました');
+  $('#newdlg').classList.remove('show');
+}
+
+// =============================================================
+//  アカウント管理（board.json settings.accounts の追加・削除・並べ替え）
+// -------------------------------------------------------------
+//  ★ 名簿(claude-anchor/accounts.json)自体はここから変更しない(読むだけ・判断A)。
+//    ここで変えるのはあくまで盤面側の「どのファイルを見に行くか」の登録簿。
+// =============================================================
+function amMsg(text,isErr){const el=$('#amMsg');if(!el)return;el.textContent=text||'';el.style.color=isErr?'var(--crit)':'var(--muted)';}
+
+function openAccountsModal(){
+  renderAccountsModal();
+  $('#acctdlg').classList.add('show');
+}
+
+function renderAccountsModal(){
+  const d=USAGE||{accounts:[]};
+  const accounts=d.accounts||[];
+  const reg=accounts.filter(a=>a.inBoard);
+  const unreg=accounts.filter(a=>!a.inBoard&&a.rosterKey);
+
+  const regWrap=$('#amRegistered');regWrap.textContent='';
+  if(reg.length===0){
+    const e=document.createElement('div');e.className='ck-empty';e.textContent='登録済みのアカウントはありません。';regWrap.appendChild(e);
+  }
+  reg.forEach((a,i)=>{
+    const row=document.createElement('div');row.className='amrow';
+    const key=document.createElement('span');key.className='amkey';key.textContent=a.key;
+    const email=document.createElement('span');email.className='amemail';
+    email.textContent=(a.email||'（未ログイン／設定を確認してください）')+(a.label?'　'+a.label:'');
+    const acts=document.createElement('span');acts.className='amactions';
+    const up=document.createElement('button');up.className='btn sm';up.textContent='↑';up.title='上へ';up.disabled=i===0;
+    up.onclick=()=>moveAccount(reg,a.key,-1);
+    const down=document.createElement('button');down.className='btn sm';down.textContent='↓';down.title='下へ';down.disabled=i===reg.length-1;
+    down.onclick=()=>moveAccount(reg,a.key,1);
+    const del=document.createElement('button');del.className='btn sm';del.textContent='削除';
+    del.onclick=()=>removeAccount(a.key,a.email);
+    acts.append(up,down,del);
+    row.append(key,email,acts);regWrap.appendChild(row);
+  });
+
+  const unregSec=$('#amUnregSec'),unregWrap=$('#amUnregistered');unregWrap.textContent='';
+  if(unreg.length){
+    unregSec.style.display='';
+    unreg.forEach(a=>{
+      const row=document.createElement('div');row.className='amrow';
+      const email=document.createElement('span');email.className='amemail';
+      email.textContent=(a.email||a.rosterKey)+(a.plan?'（'+a.plan+'）':'')+'　— 名簿にはあるがこの盤面に未登録';
+      const add=document.createElement('button');add.className='btn sm primary';add.textContent='追加';
+      add.onclick=()=>addFromRoster(a.rosterKey,add);
+      row.append(email,add);unregWrap.appendChild(row);
+    });
+  } else { unregSec.style.display='none'; }
+}
+
+async function moveAccount(regList,key,dir){
+  const order=regList.map(a=>a.key);
+  const idx=order.indexOf(key);if(idx<0)return;
+  const j=idx+dir;if(j<0||j>=order.length)return;
+  [order[idx],order[j]]=[order[j],order[idx]];
+  const r=await api('/api/accounts/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order})});
+  if(r.error){amMsg(r.error,true);return;}
+  amMsg('並び替えました。');
+  await loadStatus();renderAccountsModal();
+}
+async function removeAccount(key,email){
+  if(!confirm((email||key)+' をこの盤面の登録から外します。ログイン情報自体は消えません。よろしいですか？'))return;
+  const r=await api('/api/accounts/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
+  if(r.error){amMsg(r.error,true);return;}
+  amMsg('削除しました: '+key);
+  await loadStatus();renderAccountsModal();
+}
+async function addFromRoster(rosterKey,btn){
+  if(btn){btn.disabled=true;btn.textContent='追加中…';}
+  const r=await api('/api/accounts/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rosterKey})});
+  if(r.error){amMsg(r.error,true);if(btn){btn.disabled=false;btn.textContent='追加';}return;}
+  amMsg('追加しました: '+rosterKey);
+  await loadStatus();renderAccountsModal();
+}
+$('#amAdd').onclick=async()=>{
+  const key=$('#amKey').value.trim(),label=$('#amLabel').value.trim();
+  const configFile=$('#amConfig').value.trim(),credFile=$('#amCred').value.trim();
+  if(!key||!configFile||!credFile){amMsg('key・configFile・credFile は必須です。',true);return;}
+  const r=await api('/api/accounts/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,label,configFile,credFile})});
+  if(r.error){amMsg(r.error,true);return;}
+  amMsg('追加しました: '+key);
+  $('#amKey').value='';$('#amLabel').value='';$('#amConfig').value='';$('#amCred').value='';
+  await loadStatus();renderAccountsModal();
+};
+$('#amClose').onclick=()=>$('#acctdlg').classList.remove('show');
+$('#acctdlg').onclick=e=>{if(e.target===$('#acctdlg'))$('#acctdlg').classList.remove('show');};
+
+function passFilter(s,q){
+  if(PINFILTER==='pin'&&!s.pinned)return false;
+  if(!q)return true;q=q.toLowerCase();
+  const hay=[s.title,s.snippet,s.projectName,(s.files||[]).join(' '),(s.asks||[]).join(' ')].join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
+function render(){
+  const q=$('#q').value.trim();
+  const shown=SESSIONS.filter(s=>passFilter(s,q));
+  // 会話の最終時刻で並べる（日付ラベルと軸を一致させる。mtimeだと日付がバラつく）
+  const tv=s=>s.lastTs?Date.parse(s.lastTs):0;
+  shown.sort((a,b)=>ORDER==='new'?tv(b)-tv(a):tv(a)-tv(b));
+  const main=$('#main');main.textContent='';
+  if(shown.length===0){const e=document.createElement('div');e.className='empty';e.textContent='該当するセッションがありません。';main.appendChild(e);updateSelbar();return;}
+  // 日付でグループ化（並び順は維持）
+  let curKey=null,curCnt=null;
+  for(const s of shown){
+    const k=dayKey(s.lastTs);
+    if(k!==curKey){
+      curKey=k;
+      const dh=document.createElement('div');dh.className='day';
+      const lbl=document.createElement('span');lbl.className='lbl';lbl.textContent=dayLabel(s.lastTs);
+      const rule=document.createElement('span');rule.className='rule';
+      curCnt=document.createElement('span');curCnt.className='cnt';
+      dh.append(lbl,rule,curCnt);main.appendChild(dh);curCnt._n=0;
+    }
+    curCnt._n++;curCnt.textContent=curCnt._n+' 件';
+    main.appendChild(row(s));
+  }
+  updateSelbar();
+}
+
+function row(s){
+  const r=document.createElement('div');
+  r.className='row'+(s.pinned?' pinned':'')+(s.missing?' missing':'');
+
+  // 行1: チェック / ピン / タイトル / model
+  const r1=document.createElement('div');r1.className='r1';
+  const chk=document.createElement('input');chk.type='checkbox';chk.className='chk';
+  chk.checked=SELECTED.has(s.sessionId);chk.disabled=s.missing;
+  chk.onclick=e=>{e.stopPropagation();chk.checked?SELECTED.add(s.sessionId):SELECTED.delete(s.sessionId);updateSelbar();};
+  const pin=document.createElement('button');pin.className='pin'+(s.pinned?' on':'');
+  pin.textContent=s.pinned?'★':'☆';pin.title=s.pinned?'ピン解除':'ピン留め';
+  pin.onclick=async e=>{e.stopPropagation();
+    await api('/api/pin',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionId:s.sessionId,pinned:!s.pinned})});
+    s.pinned=!s.pinned;render();};
+  const title=document.createElement('div');title.className='title';title.textContent=s.title;
+  title.title='ダブルクリックで表示名を編集';
+  title.ondblclick=e=>{e.stopPropagation();editName(title,s);};
+  r1.append(chk,pin,title);
+  const mdl=modelFmt(s.model,s.effort);
+  if(mdl){const m=document.createElement('span');m.className='model';m.textContent=mdl;r1.appendChild(m);}
+  r.appendChild(r1);
+
+  if(s.missing){
+    const mt=document.createElement('div');mt.className='metrics';mt.textContent='セッションが見つかりません（ピンのみ残存）';
+    r.appendChild(mt);return finishRow(r,s);
+  }
+
+  // 行2: 指標
+  const mt=document.createElement('div');mt.className='metrics';
+  const add=(html,cls,title)=>{const e=document.createElement('span');if(cls)e.className=cls;if(title)e.title=title;e.innerHTML=html;mt.appendChild(e);};
+  if(s.projectName)add('▸ '+esc(s.projectName),'proj','作業していたプロジェクト（最新のcwd）');
+  const dur=durFmt(s.firstTs,s.lastTs);if(dur)add('⏱ '+dur,null,'最初〜最後のやり取りの期間');
+  add('💬 <b>'+(s.assistantCount||0)+'</b>',null,'Claudeの応答数（あなたの指示 '+(s.userTurns||0)+' 回）');
+  if(s.toolCount)add('🛠 <b>'+s.toolCount+'</b>',null,'ツール実行回数（ファイル編集・コマンド等）');
+  add('🔤 <b>~'+tokFmt(s.outputTokens)+'</b>','tok','Claudeの出力トークン量（作業の重さの目安）');
+  r.appendChild(mt);
+
+  // 行3: 触ったファイル
+  if(s.files&&s.files.length){
+    const fl=document.createElement('div');fl.className='files';
+    for(const f of s.files.slice(0,5)){const e=document.createElement('span');e.className='file';e.textContent=f;fl.appendChild(e);}
+    if(s.files.length>5){const e=document.createElement('span');e.className='file';e.textContent='+'+(s.files.length-5)+'件';fl.appendChild(e);}
+    r.appendChild(fl);
+  }
+
+  // 行4: 目次（あなたの指示）
+  if(s.asks&&s.asks.length){
+    const ak=document.createElement('div');ak.className='asks';
+    const n=Math.min(s.asks.length,3);
+    for(let i=0;i<n;i++){const d=document.createElement('div');
+      const b=document.createElement('span');b.className='b';b.textContent=(i===n-1&&s.asks.length<=3?'└ ':'├ ');
+      d.appendChild(b);d.appendChild(document.createTextNode(s.asks[i]));ak.appendChild(d);}
+    if(s.asks.length>3){const d=document.createElement('div');const b=document.createElement('span');b.className='b';b.textContent='└ ';d.appendChild(b);d.appendChild(document.createTextNode('…'));ak.appendChild(d);}
+    r.appendChild(ak);
+  }
+
+  // トークン量バー
+  const bar=document.createElement('div');bar.className='tokbar';
+  bar.style.width=Math.max(2,Math.round((s.outputTokens||0)/MAXTOK*100))+'%';
+  r.appendChild(bar);
+
+  return finishRow(r,s);
+}
+function finishRow(r,s){
+  const open=document.createElement('button');open.className='btn primary open';open.textContent='開く';
+  open.disabled=s.missing||!s.cwdExists;
+  open.onclick=e=>{e.stopPropagation();doOpen([s.sessionId]);};
+  r.appendChild(open);
+  r.onclick=()=>{if(!s.missing)openPreview(s);};
+  return r;
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function editName(el,s){
+  el.contentEditable='true';el.focus();
+  const rg=document.createRange();rg.selectNodeContents(el);
+  const sel=getSelection();sel.removeAllRanges();sel.addRange(rg);
+  const finish=async(save)=>{el.contentEditable='false';el.onblur=null;
+    if(save){const name=el.textContent.trim();
+      await api('/api/name',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sessionId:s.sessionId,name})});
+      s.title=name||s.aiTitle||s.title;s.customName=name||null;}
+    render();};
+  el.onblur=()=>finish(true);
+  el.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(true);}if(e.key==='Escape')finish(false);};
+}
+
+async function openPreview(s){
+  CURRENT=s;$('#mTitle').textContent=s.title;$('#mMeta').textContent='読み込み中…';$('#mBody').textContent='';
+  $('#mOpen').disabled=s.missing||!s.cwdExists;$('#overlay').classList.add('show');
+  const d=await api('/api/preview?id='+encodeURIComponent(s.sessionId));
+  const body=$('#mBody');body.textContent='';
+  if(!d.exchanges||d.exchanges.length===0){const e=document.createElement('div');e.className='empty';e.textContent='プレビューを取得できませんでした。';body.appendChild(e);}
+  for(const ex of (d.exchanges||[])){const w=document.createElement('div');w.className='ex '+ex.role;
+    const rl=document.createElement('div');rl.className='role';rl.textContent=ex.role==='user'?'あなた':'Claude';
+    const t=document.createElement('div');t.className='text';t.textContent=ex.text;w.append(rl,t);body.appendChild(w);}
+  const parts=['💬 '+(s.assistantCount||0)+' 応答', s.toolCount?('🛠 '+s.toolCount):'',
+    '🔤 ~'+tokFmt(s.outputTokens)+' 出力', durFmt(s.firstTs,s.lastTs)?('⏱ '+durFmt(s.firstTs,s.lastTs)):'',
+    modelFmt(s.model,s.effort)];
+  $('#mMeta').textContent=parts.filter(Boolean).join(' · ');
+}
+function closeModal(){$('#overlay').classList.remove('show');CURRENT=null;}
+
+async function doOpen(ids,{fromBulk=false}={}){
+  ids=ids.filter(Boolean);if(ids.length===0)return;
+  if(ids.length>SETTINGS.maxBulkOpen){alert('一度に開けるのは最大'+SETTINGS.maxBulkOpen+'件です。');return;}
+  if(ids.length>=SETTINGS.bulkConfirmThreshold){
+    const titles=ids.map(id=>{const s=SESSIONS.find(x=>x.sessionId===id);return '・'+(s?s.title:id);}).join('\n');
+    if(!confirm(ids.length+'件のタブを開きます。よろしいですか？\n\n'+titles))return;}
+  const p=ids.length===1?'/api/load':'/api/load-bulk';
+  const body=ids.length===1?{sessionId:ids[0]}:{sessionIds:ids};
+  const r=await api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.error){alert('開けませんでした: '+r.error);return;}
+  if(r.via==='powershell-fallback')toast('wt未検出のため素のウィンドウで開きました');
+  if(fromBulk){SELECTED.clear();render();}
+}
+function updateSelbar(){const bar=$('#selbar'),n=SELECTED.size;bar.classList.toggle('show',n>0);$('#selcount').textContent=n+' 件選択中';}
+function toast(msg){const w=$('#wtstatus');w.className='status warn';w.innerHTML='<span class="dot"></span>'+msg;}
+
+// トグル
+function bindToggle(id,cb){const t=$(id);t.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  t.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');cb(b.dataset.v);});}
+bindToggle('#pinfilter',v=>{PINFILTER=v;render();});
+bindToggle('#order',v=>{ORDER=v;render();});
+$('#q').oninput=render;
+$('#openPins').onclick=()=>{const ids=SESSIONS.filter(s=>s.pinned&&!s.missing&&s.cwdExists).map(s=>s.sessionId);
+  if(ids.length===0){alert('開けるピン留めセッションがありません。');return;}doOpen(ids);};
+$('#newBtn').onclick=openNewDialog;
+$('#ndClose').onclick=()=>$('#newdlg').classList.remove('show');
+$('#ndOpen').onclick=doNew;
+$('#ndPath').onkeydown=e=>{if(e.key==='Enter')doNew();};
+$('#newdlg').onclick=e=>{if(e.target===$('#newdlg'))$('#newdlg').classList.remove('show');};
+$('#ckSum').onclick=()=>{
+  CKOPEN=!CKOPEN;try{localStorage.setItem('ck.open',CKOPEN?'1':'0');}catch(e){}
+  $('#cockpit').classList.toggle('expanded',CKOPEN);
+  $('#ckSum').setAttribute('aria-expanded',CKOPEN?'true':'false');
+  syncSticky();
+};
+if(window.ResizeObserver){
+  const ro=new ResizeObserver(()=>syncSticky());
+  ro.observe(document.querySelector('header'));ro.observe($('#cockpit'));
+}
+window.addEventListener('resize',syncSticky);
+syncSticky();
+setInterval(loadStatus,60000); // 定期的にローカルの値を読み直す（枠は消費しない）
+$('#selclear').onclick=()=>{SELECTED.clear();render();};
+$('#selopen').onclick=()=>doOpen([...SELECTED],{fromBulk:true});
+$('#mClose').onclick=closeModal;
+$('#overlay').onclick=e=>{if(e.target===$('#overlay'))closeModal();};
+$('#mOpen').onclick=()=>{if(CURRENT)doOpen([CURRENT.sessionId]);};
+$('#mDry').onclick=async()=>{if(!CURRENT)return;
+  const r=await api('/api/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:CURRENT.sessionId,dryRun:true})});
+  if(r.dryRun)alert('実行されるコマンド:\n\n'+r.dryRun);else alert('確認できませんでした: '+(r.error||''));};
+document.onkeydown=e=>{
+  if(e.key==='Escape'){closeModal();$('#newdlg').classList.remove('show');$('#acctdlg').classList.remove('show');return;}
+  // 「/」で検索へ（入力中は素通し）
+  if(e.key==='/'&&!/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)
+     &&!document.activeElement.isContentEditable){e.preventDefault();$('#q').focus();$('#q').select();}
+};
+
+load();
+</script>
+</body>
+</html>

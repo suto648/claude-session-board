@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 方向性B: ピン留めの比喩 — セッションカードにピンが刺さっている -->
+  <rect x="8" y="16" width="38" height="42" rx="5" fill="#c4b5fd"/>
+  <rect x="8" y="16" width="38" height="10" rx="5" fill="#7c3aed"/>
+  <circle cx="46" cy="18" r="12" fill="#5b21b6"/>
+  <rect x="43" y="27" width="6" height="16" rx="3" fill="#5b21b6"/>
+</svg>

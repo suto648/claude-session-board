@@ -1,0 +1,25 @@
+{
+  "_使い方": "CbC Tools(hub\\registry.json)の tools 配列に、この中身をそのまま1件追記してください。パスの目印(dir)は CONNECT.md の説明どおり展開されます。本番の registry.json は直接ここでは編集していません(CONNECT.mdの指示どおり、貼り付けはユーザー側で行うリファレンス片です)。",
+  "id": "claude-session-board",
+  "name": "Claude Session Board",
+  "desc": "Claude Codeの過去セッションをピン留め・プレビュー付き盤面で見て開き直す",
+  "mode": "external",
+  "implemented": true,
+  "readOnly": false,
+  "dir": "{HOME}\\claude-session-board",
+  "launch": {
+    "exe": "{NODE}",
+    "args": ["{HOME}\\claude-session-board\\server.js"]
+  },
+  "probe": {
+    "type": "heartbeat",
+    "maxAgeSec": 8
+  },
+  "autostart": {
+    "type": "hub",
+    "enabled": false
+  },
+  "log": "{LOGS}\\claude-session-board.log",
+  "stopOrder": 50,
+  "_モード選択の理由": "external — このツールは自分自身で二重起動防止(/api/whoamiで自己確認)を持ち、Windowsのタスクスケジューラ/start-board.vbsからも独立して起動できる。CbCが停止操作を受け付けてしまうと『本番の稼働中プロセスを止めない』という運用原則に反するおそれがあるため、modeをexternalにしてCbCからの停止を封じてある(launchは残しているので、落ちているときに手動で起動することはできる。読むだけで止めない設計)。"
+}

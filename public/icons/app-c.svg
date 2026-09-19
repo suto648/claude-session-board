@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 方向性C: 時系列の比喩 — 過去のセッションが線でつながり、最新が大きく強調 -->
+  <line x1="10" y1="34" x2="52" y2="34" stroke="#38bdf8" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="14" cy="34" r="6" fill="#38bdf8"/>
+  <circle cx="32" cy="34" r="6" fill="#38bdf8"/>
+  <circle cx="52" cy="34" r="10" fill="#075985"/>
+</svg>
