@@ -77,3 +77,12 @@ powershell -File build-dist.ps1   # 配布物を組む（中止ゲート4種つ�
 
 アイコンは3案あります（`public/icons/app-a|b|c.svg`）。
 採用案は `tools/make-icons-all.js` の `DEFAULT_VARIANT` で切り替えます。
+
+---
+
+## 同じ作者のもの
+
+- **[CbC Tools](https://github.com/suto648/cbc-tools)**（無料）
+  — 自作の常駐ツールを1つの窓から見て操作するハブ。この盤面の繋ぎ先です。
+- **[やるべきこと-editor](https://suto648.github.io/)**（有料・Windows）
+  — 今日やったことが勝手にまとまる作業メモ。使い方は買う前に全文読めます。
